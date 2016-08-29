@@ -5,9 +5,7 @@ import hashlib
 import base64
 import sys
 from select import select
-import re
 import logging
-from threading import Thread
 import errors
 
 class WebSocket(object):
@@ -81,29 +79,10 @@ class WebSocket(object):
                 raise UnsupportedOpcode(opcode)
     def dohandshake(self, header, key=None):
         print("Begin handshake: %s" % header)
-        digitRe = re.compile(r'[^0-9]')
-        spacesRe = re.compile(r'\s')
-        part_1 = part_2 = v13 = origin = None
         v13 = origin = None
         sec_web_accept = None
         for line in header.split('\r\n')[1:]:
             name, value = line.split(': ', 1)
-            if name.lower() == "sec-websocket-key1":
-                key_number_1 = int(digitRe.sub('', value))
-                spaces_1 = len(spacesRe.findall(value))
-                if spaces_1 == 0:
-                    return False
-                if key_number_1 % spaces_1 != 0:
-                    return False
-                part_1 = key_number_1 / spaces_1
-            elif name.lower() == "sec-websocket-key2":
-                key_number_2 = int(digitRe.sub('', value))
-                spaces_2 = len(spacesRe.findall(value))
-                if spaces_2 == 0:
-                    return False
-                if key_number_2 % spaces_2 != 0:
-                    return False
-                part_2 = key_number_2 / spaces_2
             elif name.lower() == "origin":
                 origin = value
             elif name.lower() == "sec-websocket-key":
