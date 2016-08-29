@@ -1,12 +1,23 @@
-import time
+import threading
 import struct
 import socket
 import hashlib
 import base64
 import sys
-from select import select
 import logging
 import errors
+import os
+from select import select
+
+class WebSocketDelegate(object):
+    def __init__(self):
+        self.socket = None
+    def OnConnect(self):
+        return None
+    def OnRecieve(self,data):
+        return None
+    def OnError(self):
+        return None
 
 class WebSocket(object):
     handshake = (
@@ -21,13 +32,17 @@ class WebSocket(object):
         "Sec-Websocket-Version: 13\r\n"
         "\r\n"
     )
-    def __init__(self, client, server):
+    def __init__(self, client, server, delegate):
         self.client = client
         self.server = server
         self.handshaken = False
         self.header = ""
         self.data = b""
-
+        self.delegate = delegate()
+        if isinstance(self.delegate, WebSocketDelegate):
+            self.delegate.socket = self
+        else:
+            raise TypeError("Delegate must be an instance of WebSocketDelegate")
     def feed(self, data):
         if not self.handshaken:
             #print("shaking hand")
@@ -38,14 +53,18 @@ class WebSocket(object):
                 if self.dohandshake(self.header, parts[1]):
                     #print("Handshake successful")
                     self.handshaken = True
+                    if self.delegate != None:
+                        t = threading.Thread(target=self.delegate.OnConnect)
+                        t.start()
             else:
                 raise errors.BrokenClientHandShake(data)
         else:
-            self.decodeFrame(data)
+            if self.delegate!=None:
+                self.delegate.OnRecieve(self.decodeFrame(data))
 
     def decodeFrame(self,data):
         if len(data) < 14:
-            raise SocketFrameTooShort(data)
+            raise errors.SocketFrameTooShort(data)
         opcode = data[0] & 0b00001111
         if (data[1] & 0b10000000) > 0 and (opcode == 0 or opcode == 1 or opcode == 2):
             #proceed With the connection
@@ -53,7 +72,6 @@ class WebSocket(object):
             masking_key = data[2:6]
             data_start = 6
             if datalength == 126:
-                print ("16bit message length")
                 datalength = int(datalength[2])*256+int(datalength[3])
                 masking_key = data[4:8]
                 data_start = 8
@@ -61,29 +79,53 @@ class WebSocket(object):
                 datalength = struct.unpack("<L", datalength[2:10])[0]
                 masking_key = data[10:14]
                 data_start = 14
-                print ("64bit message length")
             payload = data[data_start:]
             message = b""
             if datalength != len(payload):
-                raise WrongHeaderLength(datalength,len(payload));
+                raise errors.WrongHeaderLength(datalength,len(payload));
             for i in range(0,datalength):
                 message += bytes([payload[i]^masking_key[i%4]])
+            return message
         elif opcode == 0x9:
             self.pong()
         elif opcode == 0x8:
             self.close()
         else:
             if (data[1] & 0b10000000) == 0 and (opcode == 0 or opcode == 1 or opcode == 2):
-                raise ClientMustMaskMessage(data)
+                raise errors.ClientMustMaskMessage(data)
             else:
-                raise UnsupportedOpcode(opcode)
-    def dohandshake(self, header, key=None):
-        print("Begin handshake: %s" % header)
+                raise errors.UnsupportedOpcode(opcode)
+    def encodeFrame(self, data, mask = False):
+        dat = bytearray([129])
+        length_of_data = len(data)
+        rawbits = b""
+        if isinstance(data,str):
+            rawbits = bytearray(data,"utf-8")
+        else:
+            rawbits = bytearray(data)
+        randomkey = b""
+        if length_of_data < 126:
+            dat += bytes([len(data)])
+        elif length_of_data < 2**16:
+            dat += [126]
+            dat += len(data).to_bytes(2,sys.byteorder)
+        else:
+            dat += [127]
+            dat += len(data).to_bytes(8,sys.byteorder)
+        if mask:
+            randomkey = os.urandom(4)
+            for i in range(0,length_of_data):
+                rawbits[i] ^= randomkey[i%4]
+            dat += randomkey
+            dat[2] |= 0b10000000
+        dat+=rawbits
+        return dat
+    def dohandshake(self, header, key = None):
         v13 = origin = None
         sec_web_accept = None
         for line in header.split('\r\n')[1:]:
             name, value = line.split(': ', 1)
-            elif name.lower() == "origin":
+            if name.lower() == "origin":
                 origin = value
             elif name.lower() == "sec-websocket-key":
                 #calculate Websocket Hash
@@ -110,13 +152,12 @@ class WebSocket(object):
         self.client.send(bytes(handshake,"utf-8"))
         return True
     def pong(self):
-        print("Ponging")
-    def onmessage(self, data):
-        print("Got message: %s" % data)
-
+        print("Ponging unimplmented")
+    def onmessage(self):
+        if self.delegate != None:
+            self.delegate.onRecieve(self.data)
     def send(self, data):
-        self.client.send("\x00%s\xff" % data)
-
+        self.client.send(self.encodeFrame(data,False))
     def close(self):
         self.client.close()
 
@@ -143,7 +184,7 @@ class WebSocketServer(object):
                     client, address = self.socket.accept()
                     fileno = client.fileno()
                     self.listeners.append(fileno)
-                    self.connections[fileno] = self.cls(client, self)
+                    self.connections[fileno] = WebSocket(client,self,self.cls)
                 else:
                     #print("Client ready for reading %s" % ready)
                     client = self.connections[ready].client
