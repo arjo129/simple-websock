@@ -8,6 +8,7 @@ from select import select
 import re
 import logging
 from threading import Thread
+import errors
 
 class WebSocket(object):
     handshake = (
@@ -40,15 +41,13 @@ class WebSocket(object):
                     #print("Handshake successful")
                     self.handshaken = True
             else:
-                print("smth went wrong")
+                raise errors.BrokenClientHandShake(data)
         else:
             self.decodeFrame(data)
 
     def decodeFrame(self,data):
         if len(data) < 14:
-            print ("invalid socket frame")
-            return
-        print("parsing msg")
+            raise SocketFrameTooShort(data)
         opcode = data[0] & 0b00001111
         if (data[1] & 0b10000000) > 0 and (opcode == 0 or opcode == 1 or opcode == 2):
             #proceed With the connection
@@ -67,19 +66,25 @@ class WebSocket(object):
                 print ("64bit message length")
             payload = data[data_start:]
             message = b""
-            if datalength != payload:
-                return;
+            if datalength != len(payload):
+                raise WrongHeaderLength(datalength,len(payload));
             for i in range(0,datalength):
                 message += bytes([payload[i]^masking_key[i%4]])
         elif opcode == 0x9:
             self.pong()
-        else:
+        elif opcode == 0x8:
             self.close()
+        else:
+            if (data[1] & 0b10000000) == 0 and (opcode == 0 or opcode == 1 or opcode == 2):
+                raise ClientMustMaskMessage(data)
+            else:
+                raise UnsupportedOpcode(opcode)
     def dohandshake(self, header, key=None):
         print("Begin handshake: %s" % header)
         digitRe = re.compile(r'[^0-9]')
         spacesRe = re.compile(r'\s')
         part_1 = part_2 = v13 = origin = None
+        v13 = origin = None
         sec_web_accept = None
         for line in header.split('\r\n')[1:]:
             name, value = line.split(': ', 1)
@@ -179,8 +184,3 @@ class WebSocketServer(object):
                     for fileno, conn in self.connections:
                         conn.close()
                     self.running = False
-
-
-server = WebSocketServer("localhost", 9999, WebSocket)
-server_thread = Thread(target=server.listen, args=[5])
-server_thread.start()
