@@ -204,3 +204,8 @@ class WebSocketServer(object):
                     for fileno, conn in self.connections:
                         conn.close()
                     self.running = False
+
+def run_server_in_bg(delegate):
+    server = WebSocketServer("localhost", 9999, delegate)
+    server_thread = threading.Thread(target=server.listen, args=[5])
+    server_thread.start()
