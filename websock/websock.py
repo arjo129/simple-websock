@@ -5,7 +5,6 @@ import hashlib
 import base64
 import sys
 import logging
-import errors
 import os
 from select import select
 
