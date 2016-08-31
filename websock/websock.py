@@ -56,14 +56,14 @@ class WebSocket(object):
                         t = threading.Thread(target=self.delegate.OnConnect)
                         t.start()
             else:
-                raise errors.BrokenClientHandShake(data)
+                raise BrokenClientHandShake(data)
         else:
             if self.delegate!=None:
                 self.delegate.OnRecieve(self.decodeFrame(data))
 
     def decodeFrame(self,data):
         if len(data) < 14:
-            raise errors.SocketFrameTooShort(data)
+            raise SocketFrameTooShort(data)
         opcode = data[0] & 0b00001111
         if (data[1] & 0b10000000) > 0 and (opcode == 0 or opcode == 1 or opcode == 2):
             #proceed With the connection
@@ -81,7 +81,7 @@ class WebSocket(object):
             payload = data[data_start:]
             message = b""
             if datalength != len(payload):
-                raise errors.WrongHeaderLength(datalength,len(payload));
+                raise WrongHeaderLength(datalength,len(payload));
             for i in range(0,datalength):
                 message += bytes([payload[i]^masking_key[i%4]])
             return message
@@ -91,9 +91,9 @@ class WebSocket(object):
             self.close()
         else:
             if (data[1] & 0b10000000) == 0 and (opcode == 0 or opcode == 1 or opcode == 2):
-                raise errors.ClientMustMaskMessage(data)
+                raise ClientMustMaskMessage(data)
             else:
-                raise errors.UnsupportedOpcode(opcode)
+                raise UnsupportedOpcode(opcode)
     def encodeFrame(self, data, mask = False):
         dat = bytearray([129])
         length_of_data = len(data)
