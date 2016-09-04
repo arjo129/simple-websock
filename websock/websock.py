@@ -58,7 +58,7 @@ class WebSocket(object):
                     if self.delegate != None:
                         t = threading.Thread(target=self.delegate.OnConnect)
                         t.start()
-                        self.SetThread(t)
+                        self.delegate.SetThread(t)
             else:
                 raise BrokenClientHandShake(data)
         else:
