@@ -18,7 +18,7 @@ class WebSocketDelegate(object):
         return None
     def OnError(self):
         return None
-    def SetThread(thread):
+    def SetThread(self,thread):
         self.thread = thread
 
 class WebSocket(object):
