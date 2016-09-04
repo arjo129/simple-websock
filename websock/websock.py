@@ -11,12 +11,15 @@ from select import select
 class WebSocketDelegate(object):
     def __init__(self):
         self.socket = None
+        self.thread = None
     def OnConnect(self):
         return None
     def OnRecieve(self,data):
         return None
     def OnError(self):
         return None
+    def SetThread(thread):
+        self.thread = thread
 
 class WebSocket(object):
     handshake = (
@@ -55,6 +58,7 @@ class WebSocket(object):
                     if self.delegate != None:
                         t = threading.Thread(target=self.delegate.OnConnect)
                         t.start()
+                        self.SetThread(t)
             else:
                 raise BrokenClientHandShake(data)
         else:
