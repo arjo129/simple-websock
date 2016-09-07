@@ -155,7 +155,7 @@ class WebSocket(object):
         self.client.send(bytes(handshake,"utf-8"))
         return True
     def pong(self):
-        print("Ponging unimplmented")
+        self.client.send([0b10000000|0xA])
     def onmessage(self):
         if self.delegate != None:
             self.delegate.onRecieve(self.data)
